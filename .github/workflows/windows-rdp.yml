@@ -7,9 +7,10 @@ jobs:
     timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
 
-      - name: 0. Restore Data (نپره)
+      - name: 0. Restore Data
         uses: actions/cache@v4
         with:
           path: |
@@ -32,12 +33,15 @@ jobs:
           Add-LocalGroupMember -Group Administrators -Member NvDAdmin -ErrorAction SilentlyContinue
 
       - name: 3. Tailscale (IP ثابت)
-        env: { TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }} }
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "C:\tailscale.msi"
-          Start-Process msiexec -ArgumentList "/i C:\tailscale.msi /quiet /norestart" -Wait; Start-Sleep 5
+          Start-Process msiexec -ArgumentList "/i C:\tailscale.msi /quiet /norestart" -Wait
+          Start-Sleep 5
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$Env:TAILSCALE_AUTHKEY" --hostname="github-rdp-persistent" --accept-routes
-          Start-Sleep 8; $ip=& "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Start-Sleep 8
+          $ip=& "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Write-Host "RDP $ip NvDAdmin P@ssw0rd1qazXSW@#"
 
       - name: 4. Run Bot
@@ -46,11 +50,18 @@ jobs:
           Start-Process python -ArgumentList "UrlUpload/bot.py" -WorkingDirectory "UrlUpload"
 
       - name: 5. Keep Alive 340m
-        run: for ($i=1; $i -le 340; $i++){ Write-Host "[$i/340] $(Get-Date)"; Start-Sleep 60 }
+        run: |
+          for ($i=1; $i -le 340; $i++) {
+            Write-Host "[$i/340] $(Get-Date)"
+            Start-Sleep 60
+          }
 
-      - name: 6. Save Data (نپره)
+      - name: 6. Save Data
         if: always()
         run: |
-          git config user.email "a@a.com"; git config user.name "a"
-          git add bot_data.json UrlUpload/bot_data.json 2>$null; git commit -m "backup" --allow-empty 2>$null; git push origin HEAD:backup-data -f 2>$null
+          git config user.email "a@a.com"
+          git config user.name "a"
+          git add bot_data.json UrlUpload/bot_data.json 2>$null
+          git commit -m "backup" --allow-empty 2>$null
+          git push origin HEAD:backup-data -f 2>$null
           Write-Host "Saved"
