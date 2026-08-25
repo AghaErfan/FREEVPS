@@ -15,8 +15,7 @@ jobs:
         with:
           path: |
             bot_data.json
-            UrlUpload/downloads
-            D:/Downloads
+            downloads
           key: rdp-data-v1
           restore-keys: rdp-data-
 
@@ -46,8 +45,8 @@ jobs:
 
       - name: 4. Run Bot
         run: |
-          pip install -r UrlUpload/requirements.txt --quiet 2>$null
-          Start-Process python -ArgumentList "UrlUpload/bot.py" -WorkingDirectory "UrlUpload"
+          pip install -r requirements.txt --quiet 2>$null
+          python bot.py
 
       - name: 5. Keep Alive 340m
         run: |
@@ -61,7 +60,15 @@ jobs:
         run: |
           git config user.email "a@a.com"
           git config user.name "a"
-          git add bot_data.json UrlUpload/bot_data.json 2>$null
+          git add bot_data.json 2>$null
           git commit -m "backup" --allow-empty 2>$null
           git push origin HEAD:backup-data -f 2>$null
-          Write-Host "Saved"
+
+      - name: 7. Auto Restart
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Write-Host "Restarting..."
+          gh workflow run "Windows Cloud RDP - Persistent" --repo $env:GITHUB_REPOSITORY 2>$null
+          curl -X POST -H "Authorization: token $env:GH_TOKEN" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${{ github.repository }}/actions/workflows/rdp.yml/dispatches -d '{"ref":"main"}' 2>$null
