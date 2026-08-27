@@ -1,14 +1,21 @@
 name: Windows Cloud RDP
 
 on:
-  workflow_dispatch:    # فقط به‌صورت دستی اجرا می‌شود
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 360   # ۶ ساعت حداکثر زمان اجرا
+    timeout-minutes: 360
 
     steps:
+      # مرحله‌ی صفر: ذخیره‌ی زمان شروع به‌عنوان متغیر محیطی
+      - name: 0. Store Job Start Time
+        run: |
+          $startTime = Get-Date -Format o
+          Write-Host "Job started at: $startTime"
+          echo "JOB_START=$startTime" >> $env:GITHUB_ENV
+
       - name: 1. Enable Remote Desktop & Firewall
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
@@ -26,19 +33,12 @@ jobs:
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          # دانلود و نصب خاموش Tailscale
           Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "C:\tailscale.msi"
           Start-Process msiexec -ArgumentList "/i C:\tailscale.msi /quiet /norestart" -Wait
-
-          # اتصال به شبکه Tailscale
           Start-Sleep -Seconds 5
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$Env:TAILSCALE_AUTHKEY" --hostname="github-rdp-server"
-
           Start-Sleep -Seconds 8
-
-          # دریافت آی‌پی Tailscale
           $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-
           Write-Host ""
           Write-Host "==================================================" -ForegroundColor Green
           Write-Host "  >>> RDP SERVER IS READY! <<<" -ForegroundColor Cyan
@@ -50,16 +50,16 @@ jobs:
 
       - name: 4. Keep Server Alive (Auto-Renew)
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}   # توکن شخصی گیت‌هاب با دسترسی workflow
+          GH_PAT: ${{ secrets.GH_PAT }}
+          # JOB_START از GITHUB_ENV به‌صورت خودکار در دسترس است
         run: |
           $jobStart = [DateTime]::Parse($env:JOB_START)
           $triggered = $false
 
           while (-not $triggered) {
             $elapsed = (Get-Date) - $jobStart
-            if ($elapsed.TotalMinutes -ge 355) {   # ۵ دقیقه قبل از پایان تایم‌اوت
-              Write-Host "⏳ زمان نزدیک به اتمام است، راه‌اندازی اجرای جدید..."
-
+            if ($elapsed.TotalMinutes -ge 355) {
+              Write-Host "⏳ Time is almost up, triggering new run..."
               $headers = @{
                 "Authorization" = "token $env:GH_PAT"
                 "Accept"        = "application/vnd.github.v3+json"
@@ -69,15 +69,14 @@ jobs:
               } | ConvertTo-Json
 
               try {
-                # استفاده از نام فایل ورکفلو به‌جای عنوان نمایشی
                 Invoke-RestMethod `
                   -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/windows-rdp.yml/dispatches" `
                   -Method Post `
                   -Headers $headers `
                   -Body $body
-                Write-Host "✅ اجرای جدید با موفقیت راه‌اندازی شد."
+                Write-Host "✅ New run triggered successfully."
               } catch {
-                Write-Host "❌ خطا در راه‌اندازی اجرای جدید: $_"
+                Write-Host "❌ Failed to trigger: $_"
               }
 
               $triggered = $true
